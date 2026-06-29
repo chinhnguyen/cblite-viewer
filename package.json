@@ -1,0 +1,123 @@
+{
+  "name": "cblite-vscode",
+  "displayName": "CBLite Viewer",
+  "description": "View and edit Couchbase Lite databases through the cblite CLI.",
+  "version": "0.0.1",
+  "publisher": "willbe",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "CBLite Viewer",
+      "properties": {
+        "cbliteViewer.cblitePath": {
+          "type": "string",
+          "default": "cblite",
+          "description": "Path to the cblite executable. If this cannot be executed, the extension downloads cblite automatically."
+        },
+        "cbliteViewer.pageSize": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Number of documents to list per page."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "cblite.openDatabase",
+        "title": "CBLite: Open Database"
+      },
+      {
+        "command": "cblite.closeDatabase",
+        "title": "CBLite: Remove Database From Open List"
+      },
+      {
+        "command": "cblite.refreshMetadata",
+        "title": "CBLite: Refresh Metadata"
+      },
+      {
+        "command": "cblite.openDocument",
+        "title": "CBLite: View/Edit Document"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cblite",
+          "title": "CBLite",
+          "icon": "resources/database.svg"
+        }
+      ]
+    },
+    "views": {
+      "cblite": [
+        {
+          "id": "cbliteDatabases",
+          "name": "Databases"
+        },
+        {
+          "id": "cbliteMetadata",
+          "name": "Metadata"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "cblite.openDatabase",
+          "when": "view == cbliteDatabases",
+          "group": "navigation"
+        },
+        {
+          "command": "cblite.refreshMetadata",
+          "when": "view == cbliteMetadata",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "cblite.closeDatabase",
+          "when": "view == cbliteDatabases && viewItem == cbliteDatabase",
+          "group": "database_management"
+        },
+        {
+          "command": "cblite.openDocument",
+          "when": "view == cbliteDatabases && viewItem == cbliteDocument",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "keywords": [
+    "couchbase",
+    "couchbase-lite",
+    "cblite",
+    "database"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.105.0",
+    "@vscode/vsce": "^3.9.1",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.17"
+  }
+}
