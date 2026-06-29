@@ -6,7 +6,15 @@ export interface OpenedDatabase {
   databasePath: string;
 }
 
-export type DatabaseTreeNode = DatabaseNode | ScopeNode | CollectionNode | DocumentNode | LoadMoreNode | UpgradeNode | MessageNode;
+export type DatabaseTreeNode =
+  | DatabaseNode
+  | ScopeNode
+  | CollectionNode
+  | DocumentNode
+  | LoadMoreNode
+  | SearchResultsNode
+  | UpgradeNode
+  | MessageNode;
 
 export interface DatabaseNode extends OpenedDatabase {
   type: "database";
@@ -31,12 +39,21 @@ export interface DocumentNode {
   databasePath: string;
   collectionName: string;
   documentId: string;
+  treeId?: string;
 }
 
 interface LoadMoreNode {
   type: "loadMore";
   databasePath: string;
   collectionName: string;
+}
+
+interface SearchResultsNode {
+  type: "searchResults";
+  databasePath: string;
+  pattern: string;
+  children: Array<DocumentNode | MessageNode>;
+  resultCount: number;
 }
 
 export interface UpgradeNode {
@@ -49,6 +66,7 @@ interface MessageNode {
   label: string;
   description?: string;
   command?: string;
+  treeId?: string;
 }
 
 const DATABASES_STATE_KEY = "cblite.openDatabases";
@@ -74,6 +92,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
   private readonly collections = new Map<string, DatabaseCollection[]>();
   private readonly loadingCollections = new Set<string>();
   private readonly documentPages = new Map<string, DocumentPageState>();
+  private searchResults: SearchResultsNode[] = [];
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -129,6 +148,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       void this.persistActiveDatabase();
       this.didChangeActiveDatabase.fire(this.activeDatabase);
     }
+    this.searchResults = this.searchResults.filter((result) => result.databasePath !== database.databasePath);
 
     void this.persistDatabases();
     this.didChangeTreeData.fire();
@@ -169,7 +189,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         };
       case "document":
         return {
-          id: `document:${element.databasePath}:${element.collectionName}:${element.documentId}`,
+          id: element.treeId ?? `document:${element.databasePath}:${element.collectionName}:${element.documentId}`,
           label: element.documentId,
           contextValue: "cbliteDocument",
           command: {
@@ -191,6 +211,15 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
           },
           collapsibleState: vscode.TreeItemCollapsibleState.None
         };
+      case "searchResults":
+        return {
+          id: `search:${element.databasePath}:${element.pattern}`,
+          label: `${getDatabaseLabel(element.databasePath)} results`,
+          description: `${element.resultCount} found`,
+          tooltip: `Search results for "${element.pattern}" in ${element.databasePath}`,
+          iconPath: new vscode.ThemeIcon("search"),
+          collapsibleState: vscode.TreeItemCollapsibleState.Expanded
+        };
       case "upgrade":
         return {
           id: `upgrade:${element.databasePath}`,
@@ -206,7 +235,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         };
       case "message":
         return {
-          id: `message:${element.label}`,
+          id: element.treeId ?? `message:${element.label}`,
           label: element.label,
           description: element.description,
           iconPath: new vscode.ThemeIcon("info"),
@@ -234,6 +263,10 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       return this.getCollectionChildren(element);
     }
 
+    if (element?.type === "searchResults") {
+      return element.children;
+    }
+
     if (this.databases.length === 0) {
       return [
         {
@@ -252,6 +285,56 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     }));
   }
 
+  async getParent(element: DatabaseTreeNode): Promise<DatabaseTreeNode | undefined> {
+    switch (element.type) {
+      case "database":
+        return undefined;
+      case "searchResults":
+      case "scope":
+      case "upgrade":
+        return this.getDatabaseNode(element.databasePath);
+      case "collection":
+        return {
+          type: "scope",
+          databasePath: element.databasePath,
+          scopeName: element.scopeName
+        };
+      case "document": {
+        const searchResult = this.searchResults.find(
+          (result) =>
+            result.databasePath === element.databasePath &&
+            result.children.some((child) => child.type === "document" && child.treeId === element.treeId)
+        );
+        if (searchResult) {
+          return searchResult;
+        }
+
+        const collection = await this.getCollection(element.databasePath, element.collectionName);
+        return collection
+          ? {
+              type: "collection",
+              databasePath: element.databasePath,
+              scopeName: getScopeName(collection.name),
+              collection
+            }
+          : this.getDatabaseNode(element.databasePath);
+      }
+      case "loadMore": {
+        const collection = await this.getCollection(element.databasePath, element.collectionName);
+        return collection
+          ? {
+              type: "collection",
+              databasePath: element.databasePath,
+              scopeName: getScopeName(collection.name),
+              collection
+            }
+          : this.getDatabaseNode(element.databasePath);
+      }
+      case "message":
+        return undefined;
+    }
+  }
+
   async loadMoreDocuments(node: LoadMoreNode): Promise<void> {
     await this.loadDocuments(node.databasePath, node.collectionName, true);
   }
@@ -268,17 +351,107 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     this.didChangeActiveDatabase.fire(this.activeDatabase);
   }
 
+  async searchDocuments(pattern: string): Promise<DatabaseNode[]> {
+    if (this.databases.length === 0) {
+      throw new Error("Open a Couchbase Lite database first.");
+    }
+
+    const searchResults: SearchResultsNode[] = [];
+    for (const database of this.databases) {
+      const children: Array<DocumentNode | MessageNode> = [];
+      let resultCount = 0;
+
+      try {
+        const collections = await this.getCollections(database.databasePath);
+        for (const collection of collections) {
+          const page = await this.cli.searchDocuments(database.databasePath, pattern, collection.name, 50);
+          const documents = page.ids.map<DocumentNode>((documentId) => ({
+            type: "document",
+            databasePath: database.databasePath,
+            collectionName: collection.name,
+            documentId,
+            treeId: `search:${database.databasePath}:${pattern}:${collection.name}:${documentId}`
+          }));
+          resultCount += documents.length;
+          children.push(...documents);
+        }
+      } catch (error) {
+        children.push({
+          type: "message",
+          label: "Search unavailable",
+          description: formatError(error),
+          treeId: `search-error:${database.databasePath}:${pattern}`
+        });
+      }
+
+      if (children.length === 0) {
+        children.push({
+          type: "message",
+          label: "No matching documents found",
+          treeId: `search-empty:${database.databasePath}:${pattern}`
+        });
+      }
+
+      searchResults.push({
+        type: "searchResults",
+        databasePath: database.databasePath,
+        pattern,
+        children,
+        resultCount
+      });
+    }
+
+    this.searchResults = searchResults;
+    this.didChangeTreeData.fire();
+    return this.databases
+      .filter((database) => {
+        const result = searchResults.find((searchResult) => searchResult.databasePath === database.databasePath);
+        return result ? result.resultCount > 0 : false;
+      })
+      .map<DatabaseNode>((database) => ({
+        type: "database",
+        databasePath: database.databasePath,
+        active: database.databasePath === this.activeDatabasePath
+      }));
+  }
+
   forgetDocument(document: Pick<DocumentNode, "databasePath" | "collectionName" | "documentId">): void {
     const pageKey = getDocumentPageKey(document.databasePath, document.collectionName);
     const page = this.documentPages.get(pageKey);
-    if (!page) {
-      return;
+    if (page) {
+      this.documentPages.set(pageKey, {
+        ...page,
+        ids: page.ids.filter((documentId) => documentId !== document.documentId)
+      });
     }
 
-    this.documentPages.set(pageKey, {
-      ...page,
-      ids: page.ids.filter((documentId) => documentId !== document.documentId)
+    this.searchResults = this.searchResults.map((searchResult) => {
+      if (searchResult.databasePath !== document.databasePath) {
+        return searchResult;
+      }
+
+      const children = searchResult.children.filter(
+        (child) =>
+          child.type !== "document" ||
+          child.collectionName !== document.collectionName ||
+          child.documentId !== document.documentId
+      );
+      return {
+        ...searchResult,
+        children:
+          children.length > 0
+            ? children
+            : [
+                {
+                  type: "message",
+                  label: "No matching documents found",
+                  treeId: `search-empty:${searchResult.databasePath}:${searchResult.pattern}`
+                }
+              ],
+        resultCount: Math.max(searchResult.resultCount - 1, 0)
+      };
     });
+
     this.didChangeTreeData.fire();
   }
 
@@ -297,15 +470,16 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
 
       throw error;
     }
-    if (collections.length === 0) {
-      return [{ type: "message", label: "No collections found" }];
-    }
-
-    return getScopeNames(collections).map<ScopeNode>((scopeName) => ({
+    const resultNode = this.searchResults.find((result) => result.databasePath === database.databasePath);
+    const collectionNodes = collections.length === 0
+      ? [{ type: "message", label: "No collections found" } satisfies MessageNode]
+      : getScopeNames(collections).map<ScopeNode>((scopeName) => ({
       type: "scope",
       databasePath: database.databasePath,
       scopeName
     }));
+
+    return resultNode ? [resultNode, ...collectionNodes] : collectionNodes;
   }
 
   private async getScopeChildren(scope: ScopeNode): Promise<DatabaseTreeNode[]> {
@@ -372,6 +546,22 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     } finally {
       this.loadingCollections.delete(databasePath);
     }
+  }
+
+  private getDatabaseNode(databasePath: string): DatabaseNode | undefined {
+    const database = this.databases.find((item) => item.databasePath === databasePath);
+    return database
+      ? {
+          type: "database",
+          databasePath: database.databasePath,
+          active: database.databasePath === this.activeDatabasePath
+        }
+      : undefined;
+  }
+
+  private async getCollection(databasePath: string, collectionName: string): Promise<DatabaseCollection | undefined> {
+    const collections = await this.getCollections(databasePath);
+    return collections.find((collection) => collection.name === collectionName);
   }
 
   private async loadDocuments(databasePath: string, collectionName: string, append: boolean): Promise<void> {

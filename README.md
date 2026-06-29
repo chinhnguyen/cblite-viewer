@@ -16,6 +16,7 @@ To force a specific binary, set `cbliteViewer.cblitePath` to the executable path
 - Switch between opened databases by clicking them in the Databases view.
 - Keep opened databases available when moving between activity bar views.
 - Browse database contents as a tree: database, scope, collection, document.
+- Search document IDs across all opened databases with exact IDs or wildcard patterns.
 - Load documents in batches of 50 with a `Load more` row.
 - Upgrade older databases after confirmation when the current `cblite` version requires it.
 - Inspect useful database metadata like size, document counts, collections, sequences, UUIDs, and versioning.
@@ -29,6 +30,7 @@ To force a specific binary, set `cbliteViewer.cblitePath` to the executable path
 - `CBLite: Remove Database From Open List`
 - `CBLite: Upgrade Database`
 - `CBLite: Refresh Metadata`
+- `CBLite: Search Documents by ID`
 - `CBLite: View/Edit Document`
 - `CBLite: Delete Document`
 

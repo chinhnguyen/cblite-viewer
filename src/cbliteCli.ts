@@ -32,9 +32,27 @@ export class CBLiteCli {
   constructor(private readonly downloader: CBLiteDownloader) {}
 
   async listDocuments(databasePath: string, offset: number, limit: number, collectionName?: string): Promise<DocumentPage> {
+    return this.listDocumentsMatching(databasePath, offset, limit, undefined, collectionName);
+  }
+
+  async searchDocuments(databasePath: string, pattern: string, collectionName?: string, limit = 50): Promise<DocumentPage> {
+    return this.listDocumentsMatching(databasePath, 0, limit, toDocumentIdSearchPattern(pattern), collectionName);
+  }
+
+  private async listDocumentsMatching(
+    databasePath: string,
+    offset: number,
+    limit: number,
+    pattern?: string,
+    collectionName?: string
+  ): Promise<DocumentPage> {
+    const lsArgs = ["ls", "-l", "--offset", String(offset), "--limit", String(limit)];
+    const interactiveArgs = pattern ? [...lsArgs, pattern] : lsArgs;
+    const nonInteractiveArgs = pattern ? [...lsArgs, databasePath, pattern] : [...lsArgs, databasePath];
+
     const output = collectionName && !isDefaultCollection(collectionName)
-      ? await this.runInteractive(databasePath, [`cd ${collectionName}`, `ls -l --offset ${offset} --limit ${limit}`])
-      : await this.run(this.withUpgrade(databasePath, ["ls", "-l", "--offset", String(offset), "--limit", String(limit), databasePath]));
+      ? await this.runInteractive(databasePath, [`cd ${collectionName}`, shellCommand(interactiveArgs)])
+      : await this.run(this.withUpgrade(databasePath, nonInteractiveArgs));
     const ids = output
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -357,6 +375,15 @@ function isDefaultCollection(collectionName: string): boolean {
 
 function quoteInteractiveArg(value: string): string {
   return JSON.stringify(value);
+}
+
+function shellCommand(args: string[]): string {
+  return args.map((arg) => (/^[a-zA-Z0-9._=-]+$/.test(arg) ? arg : quoteInteractiveArg(arg))).join(" ");
+}
+
+function toDocumentIdSearchPattern(pattern: string): string {
+  const trimmed = pattern.trim();
+  return /[*?\[]/.test(trimmed) ? trimmed : `${trimmed}*`;
 }
 
 function extractJsonObject(output: string): string {

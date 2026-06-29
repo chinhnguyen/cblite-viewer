@@ -32,7 +32,8 @@
     "commands": [
       {
         "command": "cblite.openDatabase",
-        "title": "CBLite: Open Database"
+        "title": "CBLite: Open Database",
+        "icon": "$(database)"
       },
       {
         "command": "cblite.closeDatabase",
@@ -40,11 +41,18 @@
       },
       {
         "command": "cblite.upgradeDatabase",
-        "title": "CBLite: Upgrade Database"
+        "title": "CBLite: Upgrade Database",
+        "icon": "$(warning)"
       },
       {
         "command": "cblite.refreshMetadata",
-        "title": "CBLite: Refresh Metadata"
+        "title": "CBLite: Refresh Metadata",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "cblite.searchDocuments",
+        "title": "CBLite: Search Documents by ID",
+        "icon": "$(search)"
       },
       {
         "command": "cblite.openDocument",
@@ -52,7 +60,8 @@
       },
       {
         "command": "cblite.deleteDocument",
-        "title": "CBLite: Delete Document"
+        "title": "CBLite: Delete Document",
+        "icon": "$(trash)"
       }
     ],
     "viewsContainers": {
@@ -80,6 +89,11 @@
       "view/title": [
         {
           "command": "cblite.openDatabase",
+          "when": "view == cbliteDatabases",
+          "group": "navigation"
+        },
+        {
+          "command": "cblite.searchDocuments",
           "when": "view == cbliteDatabases",
           "group": "navigation"
         },

@@ -11,13 +11,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const databaseProvider = new DatabaseTreeProvider(context, cli);
   const metadataProvider = new MetadataTreeProvider(cli);
   const editor = new DocumentEditor(context, cli);
+  const databaseTreeView = vscode.window.createTreeView("cbliteDatabases", {
+    treeDataProvider: databaseProvider
+  });
 
   context.subscriptions.push(
     editor,
+    databaseTreeView,
     databaseProvider.onDidChangeActiveDatabase(async (database) => {
       await metadataProvider.setDatabase(database?.databasePath);
     }),
-    vscode.window.registerTreeDataProvider("cbliteDatabases", databaseProvider),
     vscode.window.registerTreeDataProvider("cbliteMetadata", metadataProvider),
     vscode.commands.registerCommand("cblite.openDatabase", async () => {
       const databasePath = await pickDatabasePath();
@@ -73,6 +76,33 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("cblite.refreshMetadata", async () => {
       await metadataProvider.refresh();
+    }),
+    vscode.commands.registerCommand("cblite.searchDocuments", async () => {
+      const pattern = await vscode.window.showInputBox({
+        title: "Search Couchbase Lite Documents",
+        prompt: "Search document IDs across all opened databases. Plain text is treated as a prefix, e.g. user becomes user*.",
+        placeHolder: "Document ID or pattern"
+      });
+      if (!pattern) {
+        return;
+      }
+
+      try {
+        const databasesWithMatches = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Searching for ${pattern}`,
+            cancellable: false
+          },
+          () => databaseProvider.searchDocuments(pattern)
+        );
+
+        for (const database of databasesWithMatches) {
+          await databaseTreeView.reveal(database, { expand: 2, focus: false, select: false });
+        }
+      } catch (error) {
+        void vscode.window.showErrorMessage(formatError(error));
+      }
     }),
     vscode.commands.registerCommand("cblite.loadMoreDocuments", async (node) => {
       await databaseProvider.loadMoreDocuments(node);
