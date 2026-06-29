@@ -5,3 +5,4 @@ tsconfig.json
 **/*.map
 node_modules/**/.bin/**
 test-data/**
+specs/**
