@@ -27,12 +27,14 @@ export interface DatabaseCollection {
 }
 
 export class CBLiteCli {
+  private readonly upgradedDatabases = new Set<string>();
+
   constructor(private readonly downloader: CBLiteDownloader) {}
 
   async listDocuments(databasePath: string, offset: number, limit: number, collectionName?: string): Promise<DocumentPage> {
     const output = collectionName && !isDefaultCollection(collectionName)
       ? await this.runInteractive(databasePath, [`cd ${collectionName}`, `ls -l --offset ${offset} --limit ${limit}`])
-      : await this.run(["ls", "-l", "--offset", String(offset), "--limit", String(limit), databasePath]);
+      : await this.run(this.withUpgrade(databasePath, ["ls", "-l", "--offset", String(offset), "--limit", String(limit), databasePath]));
     const ids = output
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -52,7 +54,7 @@ export class CBLiteCli {
   async getDocument(databasePath: string, documentId: string, collectionName?: string): Promise<unknown> {
     const output = collectionName && !isDefaultCollection(collectionName)
       ? await this.runInteractive(databasePath, [`cd ${collectionName}`, `cat --raw ${quoteInteractiveArg(documentId)}`])
-      : await this.run(["cat", "--raw", databasePath, documentId]);
+      : await this.run(this.withUpgrade(databasePath, ["cat", "--raw", databasePath, documentId]));
     try {
       return JSON.parse(extractJsonObject(output));
     } catch (error) {
@@ -67,7 +69,21 @@ export class CBLiteCli {
       return;
     }
 
-    await this.run(["--writeable", "put", databasePath, documentId, json]);
+    await this.run(this.withUpgrade(databasePath, ["--writeable", "put", databasePath, documentId, json]));
+  }
+
+  async deleteDocument(databasePath: string, documentId: string, collectionName?: string): Promise<void> {
+    if (collectionName && !isDefaultCollection(collectionName)) {
+      await this.runInteractive(databasePath, [`cd ${collectionName}`, `rm ${quoteInteractiveArg(documentId)}`], true);
+      return;
+    }
+
+    await this.run(this.withUpgrade(databasePath, ["--writeable", "rm", databasePath, documentId]));
+  }
+
+  async upgradeDatabase(databasePath: string): Promise<void> {
+    await this.run(["--upgrade", "info", databasePath]);
+    this.upgradedDatabases.add(databasePath);
   }
 
   async getDatabaseMetadata(databasePath: string): Promise<DatabaseMetadata> {
@@ -80,13 +96,16 @@ export class CBLiteCli {
 
   async listCollections(databasePath: string): Promise<DatabaseCollection[]> {
     try {
-      const output = await this.run(["lscoll", databasePath]);
+      const output = await this.run(this.withUpgrade(databasePath, ["lscoll", databasePath]));
       const collections = parseCollectionList(output);
 
       if (collections.length > 0) {
         return collections;
       }
-    } catch {
+    } catch (error) {
+      if (isDatabaseUpgradeRequiredError(error)) {
+        throw error;
+      }
       // Older cblite builds do not support lscoll; fall back to info output.
     }
 
@@ -94,17 +113,20 @@ export class CBLiteCli {
       const output = await this.getDatabaseInfoOutput(databasePath);
       const collections = parseCollections(output);
       return collections.length > 0 ? collections : [{ name: "_default._default" }];
-    } catch {
+    } catch (error) {
+      if (isDatabaseUpgradeRequiredError(error)) {
+        throw error;
+      }
       return [{ name: "_default._default" }];
     }
   }
 
   private async getDatabaseInfoOutput(databasePath: string): Promise<string> {
     try {
-      return await this.run(["info", "--verbose", databasePath]);
+      return await this.run(this.withUpgrade(databasePath, ["info", "--verbose", databasePath]));
     } catch (verboseError) {
       try {
-        return await this.run(["info", databasePath]);
+        return await this.run(this.withUpgrade(databasePath, ["info", databasePath]));
       } catch {
         throw verboseError;
       }
@@ -129,7 +151,7 @@ export class CBLiteCli {
 
   private async runInteractive(databasePath: string, commands: string[], writeable = false): Promise<string> {
     const executable = await this.downloader.getExecutablePath();
-    const args = writeable ? ["--writeable", databasePath] : [databasePath];
+    const args = this.withUpgrade(databasePath, writeable ? ["--writeable", databasePath] : [databasePath]);
 
     return new Promise((resolve, reject) => {
       const child = spawn(executable, args, { stdio: ["pipe", "pipe", "pipe"] });
@@ -153,6 +175,15 @@ export class CBLiteCli {
       child.stdin.end(`${commands.join("\n")}\nquit\n`);
     });
   }
+
+  private withUpgrade(databasePath: string, args: string[]): string[] {
+    return this.upgradedDatabases.has(databasePath) ? ["--upgrade", ...args] : args;
+  }
+}
+
+export function isDatabaseUpgradeRequiredError(error: unknown): boolean {
+  const message = formatError(error);
+  return /needs to be upgraded|--upgrade|CantUpgradeDatabase/i.test(message);
 }
 
 function formatError(error: unknown): string {

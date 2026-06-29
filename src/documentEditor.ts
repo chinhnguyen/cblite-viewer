@@ -3,10 +3,14 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { CBLiteCli } from "./cbliteCli";
 
-interface OpenDocument {
+export interface OpenDocument {
   databasePath: string;
   collectionName: string;
   documentId: string;
+}
+
+export interface OpenDocumentReference extends OpenDocument {
+  uri: vscode.Uri;
 }
 
 export class DocumentEditor implements vscode.Disposable {
@@ -17,7 +21,11 @@ export class DocumentEditor implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     private readonly cli: CBLiteCli
   ) {
-    this.disposables.push(vscode.workspace.onDidSaveTextDocument((document) => this.save(document)));
+    this.disposables.push(
+      vscode.workspace.onDidSaveTextDocument((document) => this.save(document)),
+      vscode.window.onDidChangeActiveTextEditor(() => this.updateActiveEditorContext())
+    );
+    this.updateActiveEditorContext();
   }
 
   async open(databasePath: string, documentId: string, collectionName = "_default._default"): Promise<void> {
@@ -37,10 +45,27 @@ export class DocumentEditor implements vscode.Disposable {
 
     const document = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(document, { preview: false });
+    this.updateActiveEditorContext();
   }
 
   dispose(): void {
     this.disposables.forEach((disposable) => disposable.dispose());
+  }
+
+  getActiveDocument(): OpenDocumentReference | undefined {
+    const uri = vscode.window.activeTextEditor?.document.uri;
+    if (!uri) {
+      return undefined;
+    }
+
+    const metadata = this.documents.get(uri.toString());
+    return metadata ? { ...metadata, uri } : undefined;
+  }
+
+  async closeDocument(uri: vscode.Uri): Promise<void> {
+    await this.closeTab(uri);
+    this.documents.delete(uri.toString());
+    this.updateActiveEditorContext();
   }
 
   private async save(document: vscode.TextDocument): Promise<void> {
@@ -91,6 +116,7 @@ export class DocumentEditor implements vscode.Disposable {
     if (activeDocument && this.documents.has(activeDocument.uri.toString()) && !activeDocument.isDirty) {
       await this.closeTab(activeDocument.uri);
       this.documents.delete(activeDocument.uri.toString());
+      this.updateActiveEditorContext();
       return;
     }
 
@@ -103,6 +129,7 @@ export class DocumentEditor implements vscode.Disposable {
 
         await vscode.window.tabGroups.close(tab);
         this.documents.delete(uri.toString());
+        this.updateActiveEditorContext();
         return;
       }
     }
@@ -116,6 +143,11 @@ export class DocumentEditor implements vscode.Disposable {
         return;
       }
     }
+  }
+
+  private updateActiveEditorContext(): void {
+    const activeUri = vscode.window.activeTextEditor?.document.uri.toString();
+    void vscode.commands.executeCommand("setContext", "cblite.documentEditorActive", Boolean(activeUri && this.documents.has(activeUri)));
   }
 }
 

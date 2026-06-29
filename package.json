@@ -39,12 +39,20 @@
         "title": "CBLite: Remove Database From Open List"
       },
       {
+        "command": "cblite.upgradeDatabase",
+        "title": "CBLite: Upgrade Database"
+      },
+      {
         "command": "cblite.refreshMetadata",
         "title": "CBLite: Refresh Metadata"
       },
       {
         "command": "cblite.openDocument",
         "title": "CBLite: View/Edit Document"
+      },
+      {
+        "command": "cblite.deleteDocument",
+        "title": "CBLite: Delete Document"
       }
     ],
     "viewsContainers": {
@@ -88,9 +96,28 @@
           "group": "database_management"
         },
         {
-          "command": "cblite.openDocument",
+          "command": "cblite.upgradeDatabase",
+          "when": "view == cbliteDatabases && viewItem == cbliteDatabase",
+          "group": "database_management"
+        },
+        {
+          "command": "cblite.deleteDocument",
           "when": "view == cbliteDatabases && viewItem == cbliteDocument",
-          "group": "inline"
+          "group": "document_management"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "cblite.deleteDocument",
+          "when": "cblite.documentEditorActive",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "cblite.deleteDocument",
+          "when": "cblite.documentEditorActive",
+          "group": "navigation"
         }
       ]
     }

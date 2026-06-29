@@ -1,12 +1,12 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { CBLiteCli, DatabaseCollection } from "./cbliteCli";
+import { CBLiteCli, DatabaseCollection, isDatabaseUpgradeRequiredError } from "./cbliteCli";
 
 export interface OpenedDatabase {
   databasePath: string;
 }
 
-export type DatabaseTreeNode = DatabaseNode | ScopeNode | CollectionNode | DocumentNode | LoadMoreNode | MessageNode;
+export type DatabaseTreeNode = DatabaseNode | ScopeNode | CollectionNode | DocumentNode | LoadMoreNode | UpgradeNode | MessageNode;
 
 export interface DatabaseNode extends OpenedDatabase {
   type: "database";
@@ -37,6 +37,11 @@ interface LoadMoreNode {
   type: "loadMore";
   databasePath: string;
   collectionName: string;
+}
+
+export interface UpgradeNode {
+  type: "upgrade";
+  databasePath: string;
 }
 
 interface MessageNode {
@@ -186,6 +191,19 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
           },
           collapsibleState: vscode.TreeItemCollapsibleState.None
         };
+      case "upgrade":
+        return {
+          id: `upgrade:${element.databasePath}`,
+          label: "Upgrade database to open it",
+          description: "Required",
+          iconPath: new vscode.ThemeIcon("warning"),
+          command: {
+            title: "Upgrade Database",
+            command: "cblite.upgradeDatabase",
+            arguments: [element]
+          },
+          collapsibleState: vscode.TreeItemCollapsibleState.None
+        };
       case "message":
         return {
           id: `message:${element.label}`,
@@ -238,12 +256,47 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     await this.loadDocuments(node.databasePath, node.collectionName, true);
   }
 
+  async upgradeDatabase(databasePath: string): Promise<void> {
+    await this.cli.upgradeDatabase(databasePath);
+    this.collections.delete(databasePath);
+    for (const pageKey of this.documentPages.keys()) {
+      if (pageKey.startsWith(`${databasePath}:`)) {
+        this.documentPages.delete(pageKey);
+      }
+    }
+    this.didChangeTreeData.fire();
+    this.didChangeActiveDatabase.fire(this.activeDatabase);
+  }
+
+  forgetDocument(document: Pick<DocumentNode, "databasePath" | "collectionName" | "documentId">): void {
+    const pageKey = getDocumentPageKey(document.databasePath, document.collectionName);
+    const page = this.documentPages.get(pageKey);
+    if (!page) {
+      return;
+    }
+
+    this.documentPages.set(pageKey, {
+      ...page,
+      ids: page.ids.filter((documentId) => documentId !== document.documentId)
+    });
+    this.didChangeTreeData.fire();
+  }
+
   private async getDatabaseChildren(database: DatabaseNode): Promise<DatabaseTreeNode[]> {
     if (this.loadingCollections.has(database.databasePath)) {
       return [{ type: "message", label: "Loading collections..." }];
     }
 
-    const collections = await this.getCollections(database.databasePath);
+    let collections: DatabaseCollection[];
+    try {
+      collections = await this.getCollections(database.databasePath);
+    } catch (error) {
+      if (isDatabaseUpgradeRequiredError(error)) {
+        return [{ type: "upgrade", databasePath: database.databasePath }];
+      }
+
+      throw error;
+    }
     if (collections.length === 0) {
       return [{ type: "message", label: "No collections found" }];
     }
@@ -343,6 +396,17 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
         isLoading: false
       });
     } catch (error) {
+      if (isDatabaseUpgradeRequiredError(error)) {
+        void vscode.window.showWarningMessage(
+          "This database needs to be upgraded before documents can be loaded.",
+          "Upgrade Database"
+        ).then((selection) => {
+          if (selection === "Upgrade Database") {
+            void vscode.commands.executeCommand("cblite.upgradeDatabase", { type: "upgrade", databasePath });
+          }
+        });
+      }
+
       this.documentPages.set(pageKey, {
         ids: currentPage?.ids ?? [],
         offset: currentPage?.offset ?? 0,

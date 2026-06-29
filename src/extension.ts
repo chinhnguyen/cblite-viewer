@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { CBLiteCli } from "./cbliteCli";
 import { CBLiteDownloader } from "./cbliteDownloader";
-import { DatabaseNode, DatabaseTreeProvider, DocumentNode, OpenedDatabase } from "./databaseTree";
+import { DatabaseNode, DatabaseTreeProvider, DocumentNode, OpenedDatabase, UpgradeNode } from "./databaseTree";
 import { DocumentEditor } from "./documentEditor";
 import { MetadataTreeProvider } from "./metadataTree";
 
@@ -41,11 +41,73 @@ export function activate(context: vscode.ExtensionContext): void {
 
       databaseProvider.closeDatabase(node);
     }),
+    vscode.commands.registerCommand("cblite.upgradeDatabase", async (node?: OpenedDatabase | UpgradeNode) => {
+      const databasePath = node?.databasePath ?? databaseProvider.activeDatabase?.databasePath;
+      if (!databasePath) {
+        void vscode.window.showInformationMessage("Open or select a Couchbase Lite database first.");
+        return;
+      }
+
+      const confirmed = await vscode.window.showWarningMessage(
+        "Upgrade this database for the current cblite/LiteCore version? This may make it unreadable by earlier versions.",
+        { modal: true },
+        "Upgrade Database"
+      );
+      if (confirmed !== "Upgrade Database") {
+        return;
+      }
+
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Upgrading Couchbase Lite database",
+            cancellable: false
+          },
+          () => databaseProvider.upgradeDatabase(databasePath)
+        );
+        void vscode.window.showInformationMessage("Database upgraded.");
+      } catch (error) {
+        void vscode.window.showErrorMessage(formatError(error));
+      }
+    }),
     vscode.commands.registerCommand("cblite.refreshMetadata", async () => {
       await metadataProvider.refresh();
     }),
     vscode.commands.registerCommand("cblite.loadMoreDocuments", async (node) => {
       await databaseProvider.loadMoreDocuments(node);
+    }),
+    vscode.commands.registerCommand("cblite.deleteDocument", async (node?: DocumentNode) => {
+      const target = node ?? editor.getActiveDocument();
+      if (!target) {
+        void vscode.window.showInformationMessage("Open or select a Couchbase Lite document first.");
+        return;
+      }
+
+      const confirmed = await vscode.window.showWarningMessage(
+        `Delete document "${target.documentId}"? This cannot be undone.`,
+        { modal: true },
+        "Delete"
+      );
+      if (confirmed !== "Delete") {
+        return;
+      }
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Deleting ${target.documentId}`,
+          cancellable: false
+        },
+        () => cli.deleteDocument(target.databasePath, target.documentId, target.collectionName)
+      );
+
+      databaseProvider.forgetDocument(target);
+      if ("uri" in target) {
+        await editor.closeDocument(target.uri);
+      }
+
+      void vscode.window.showInformationMessage(`Deleted ${target.documentId}`);
     }),
     vscode.commands.registerCommand("cblite.openDocument", async (node?: DocumentNode) => {
       const target = node ?? (await pickDocumentId(databaseProvider.activeDatabase?.databasePath));
@@ -58,6 +120,10 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   databaseProvider.emitActiveDatabase();
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function deactivate(): void {

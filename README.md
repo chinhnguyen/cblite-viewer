@@ -17,16 +17,20 @@ To force a specific binary, set `cbliteViewer.cblitePath` to the executable path
 - Keep opened databases available when moving between activity bar views.
 - Browse database contents as a tree: database, scope, collection, document.
 - Load documents in batches of 50 with a `Load more` row.
+- Upgrade older databases after confirmation when the current `cblite` version requires it.
 - Inspect useful database metadata like size, document counts, collections, sequences, UUIDs, and versioning.
 - Open a document as editable JSON.
 - Save JSON changes back to the database with `cblite --writeable put`.
+- Delete documents from the tree or from an open document editor.
 
 ## Commands
 
 - `CBLite: Open Database`
 - `CBLite: Remove Database From Open List`
+- `CBLite: Upgrade Database`
 - `CBLite: Refresh Metadata`
 - `CBLite: View/Edit Document`
+- `CBLite: Delete Document`
 
 ## Development
 
