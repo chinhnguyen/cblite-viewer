@@ -157,9 +157,35 @@ Steps:
 Expected:
 
 - The extension does not upgrade without explicit confirmation.
+- The extension offers selecting a different `cblite` executable as an alternative to upgrade.
 - Upgrade runs with `--upgrade`.
 - After success, tree caches refresh.
 - Subsequent reads and writes for that database work in the same session.
+
+## Database-Specific CBLite Version
+
+Use a database that requires a different `cblite` version.
+
+Steps:
+
+1. Right-click the database row.
+2. Run `CBLite: Choose CBLite Download Version`.
+3. Select a release from the Couchbase Mobile Tools download picker.
+4. Expand the database and load documents.
+5. Right-click the database row.
+6. Run `CBLite: Use Default CBLite`.
+
+Expected:
+
+- The picker lists platform-compatible release downloads.
+- Each option shows the release name, asset name, and LiteCore compatibility signal when available.
+- The extension does not claim an exact `.cblite2` format mapping unless upstream metadata declares it.
+- The selected release downloads and extracts into extension storage.
+- The downloaded executable is validated with `--version`.
+- The override applies only to the selected database.
+- Collections, documents, metadata, search, edit, and delete use the selected executable for that database.
+- Clearing the override returns the database to the global configured or auto-downloaded executable.
+- Changing the override clears cached collections, document pages, and search results for that database.
 
 ## Failure Cases
 

@@ -28,8 +28,28 @@ export interface DatabaseCollection {
 
 export class CBLiteCli {
   private readonly upgradedDatabases = new Set<string>();
+  private readonly databaseExecutablePaths = new Map<string, string>();
 
   constructor(private readonly downloader: CBLiteDownloader) {}
+
+  setDatabaseExecutablePath(databasePath: string, executablePath: string): void {
+    this.databaseExecutablePaths.set(databasePath, executablePath);
+    this.upgradedDatabases.delete(databasePath);
+  }
+
+  clearDatabaseExecutablePath(databasePath: string): void {
+    this.databaseExecutablePaths.delete(databasePath);
+  }
+
+  getDatabaseExecutablePath(databasePath: string): string | undefined {
+    return this.databaseExecutablePaths.get(databasePath);
+  }
+
+  async validateExecutablePath(executablePath: string): Promise<void> {
+    if (!(await canRunCblite(executablePath))) {
+      throw new Error(`Could not run cblite executable: ${executablePath}`);
+    }
+  }
 
   async listDocuments(databasePath: string, offset: number, limit: number, collectionName?: string): Promise<DocumentPage> {
     return this.listDocumentsMatching(databasePath, offset, limit, undefined, collectionName);
@@ -52,7 +72,7 @@ export class CBLiteCli {
 
     const output = collectionName && !isDefaultCollection(collectionName)
       ? await this.runInteractive(databasePath, [`cd ${collectionName}`, shellCommand(interactiveArgs)])
-      : await this.run(this.withUpgrade(databasePath, nonInteractiveArgs));
+      : await this.run(databasePath, this.withUpgrade(databasePath, nonInteractiveArgs));
     const ids = output
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -72,7 +92,7 @@ export class CBLiteCli {
   async getDocument(databasePath: string, documentId: string, collectionName?: string): Promise<unknown> {
     const output = collectionName && !isDefaultCollection(collectionName)
       ? await this.runInteractive(databasePath, [`cd ${collectionName}`, `cat --raw ${quoteInteractiveArg(documentId)}`])
-      : await this.run(this.withUpgrade(databasePath, ["cat", "--raw", databasePath, documentId]));
+      : await this.run(databasePath, this.withUpgrade(databasePath, ["cat", "--raw", databasePath, documentId]));
     try {
       return JSON.parse(extractJsonObject(output));
     } catch (error) {
@@ -87,7 +107,7 @@ export class CBLiteCli {
       return;
     }
 
-    await this.run(this.withUpgrade(databasePath, ["--writeable", "put", databasePath, documentId, json]));
+    await this.run(databasePath, this.withUpgrade(databasePath, ["--writeable", "put", databasePath, documentId, json]));
   }
 
   async deleteDocument(databasePath: string, documentId: string, collectionName?: string): Promise<void> {
@@ -96,11 +116,11 @@ export class CBLiteCli {
       return;
     }
 
-    await this.run(this.withUpgrade(databasePath, ["--writeable", "rm", databasePath, documentId]));
+    await this.run(databasePath, this.withUpgrade(databasePath, ["--writeable", "rm", databasePath, documentId]));
   }
 
   async upgradeDatabase(databasePath: string): Promise<void> {
-    await this.run(["--upgrade", "info", databasePath]);
+    await this.run(databasePath, ["--upgrade", "info", databasePath]);
     this.upgradedDatabases.add(databasePath);
   }
 
@@ -114,7 +134,7 @@ export class CBLiteCli {
 
   async listCollections(databasePath: string): Promise<DatabaseCollection[]> {
     try {
-      const output = await this.run(this.withUpgrade(databasePath, ["lscoll", databasePath]));
+      const output = await this.run(databasePath, this.withUpgrade(databasePath, ["lscoll", databasePath]));
       const collections = parseCollectionList(output);
 
       if (collections.length > 0) {
@@ -141,18 +161,18 @@ export class CBLiteCli {
 
   private async getDatabaseInfoOutput(databasePath: string): Promise<string> {
     try {
-      return await this.run(this.withUpgrade(databasePath, ["info", "--verbose", databasePath]));
+      return await this.run(databasePath, this.withUpgrade(databasePath, ["info", "--verbose", databasePath]));
     } catch (verboseError) {
       try {
-        return await this.run(this.withUpgrade(databasePath, ["info", databasePath]));
+        return await this.run(databasePath, this.withUpgrade(databasePath, ["info", databasePath]));
       } catch {
         throw verboseError;
       }
     }
   }
 
-  private async run(args: string[]): Promise<string> {
-    const executable = await this.downloader.getExecutablePath();
+  private async run(databasePath: string, args: string[]): Promise<string> {
+    const executable = await this.resolveExecutablePath(databasePath);
 
     return new Promise((resolve, reject) => {
       execFile(executable, args, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
@@ -168,7 +188,7 @@ export class CBLiteCli {
   }
 
   private async runInteractive(databasePath: string, commands: string[], writeable = false): Promise<string> {
-    const executable = await this.downloader.getExecutablePath();
+    const executable = await this.resolveExecutablePath(databasePath);
     const args = this.withUpgrade(databasePath, writeable ? ["--writeable", databasePath] : [databasePath]);
 
     return new Promise((resolve, reject) => {
@@ -197,6 +217,10 @@ export class CBLiteCli {
   private withUpgrade(databasePath: string, args: string[]): string[] {
     return this.upgradedDatabases.has(databasePath) ? ["--upgrade", ...args] : args;
   }
+
+  private async resolveExecutablePath(databasePath: string): Promise<string> {
+    return this.databaseExecutablePaths.get(databasePath) ?? this.downloader.getExecutablePath();
+  }
 }
 
 export function isDatabaseUpgradeRequiredError(error: unknown): boolean {
@@ -206,6 +230,14 @@ export function isDatabaseUpgradeRequiredError(error: unknown): boolean {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function canRunCblite(executablePath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(executablePath, ["--version"], { timeout: 10_000 }, (error) => {
+      resolve(!error);
+    });
+  });
 }
 
 function stripCbliteMetadata(document: unknown): unknown {

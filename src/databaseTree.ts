@@ -13,6 +13,7 @@ export type DatabaseTreeNode =
   | DocumentNode
   | LoadMoreNode
   | SearchResultsNode
+  | CBLitePathNode
   | UpgradeNode
   | MessageNode;
 
@@ -56,6 +57,11 @@ interface SearchResultsNode {
   resultCount: number;
 }
 
+export interface CBLitePathNode {
+  type: "cblitePath";
+  databasePath: string;
+}
+
 export interface UpgradeNode {
   type: "upgrade";
   databasePath: string;
@@ -71,7 +77,13 @@ interface MessageNode {
 
 const DATABASES_STATE_KEY = "cblite.openDatabases";
 const ACTIVE_DATABASE_STATE_KEY = "cblite.activeDatabasePath";
+const DATABASE_EXECUTABLES_STATE_KEY = "cblite.databaseExecutablePaths";
 const INITIAL_DOCUMENT_LIMIT = 50;
+
+interface DatabaseExecutableOverride {
+  databasePath: string;
+  executablePath: string;
+}
 
 interface DocumentPageState {
   ids: string[];
@@ -100,6 +112,11 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
   ) {
     this.databases = context.workspaceState.get<OpenedDatabase[]>(DATABASES_STATE_KEY, []);
     this.activeDatabasePath = context.workspaceState.get<string | undefined>(ACTIVE_DATABASE_STATE_KEY);
+    for (const override of context.workspaceState.get<DatabaseExecutableOverride[]>(DATABASE_EXECUTABLES_STATE_KEY, [])) {
+      if (override.databasePath && override.executablePath) {
+        this.cli.setDatabaseExecutablePath(override.databasePath, override.executablePath);
+      }
+    }
 
     if (this.activeDatabasePath && !this.databases.some((database) => database.databasePath === this.activeDatabasePath)) {
       this.activeDatabasePath = this.databases[0]?.databasePath;
@@ -149,21 +166,28 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       this.didChangeActiveDatabase.fire(this.activeDatabase);
     }
     this.searchResults = this.searchResults.filter((result) => result.databasePath !== database.databasePath);
+    this.cli.clearDatabaseExecutablePath(database.databasePath);
 
     void this.persistDatabases();
+    void this.persistDatabaseExecutables();
     this.didChangeTreeData.fire();
   }
 
   getTreeItem(element: DatabaseTreeNode): vscode.TreeItem {
     switch (element.type) {
       case "database":
+        const executablePath = this.cli.getDatabaseExecutablePath(element.databasePath);
         return {
           id: `database:${element.databasePath}`,
           label: getDatabaseLabel(element.databasePath),
           description: element.databasePath,
-          tooltip: element.active ? `Active database: ${element.databasePath}` : element.databasePath,
+          tooltip: executablePath
+            ? `${element.databasePath}\nUsing cblite: ${executablePath}`
+            : element.active
+              ? `Active database: ${element.databasePath}`
+              : element.databasePath,
           iconPath: new vscode.ThemeIcon("database"),
-          contextValue: "cbliteDatabase",
+          contextValue: executablePath ? "cbliteDatabaseWithExecutable" : "cbliteDatabase",
           command: {
             title: "Show Documents",
             command: "cblite.selectDatabase",
@@ -219,6 +243,19 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
           tooltip: `Search results for "${element.pattern}" in ${element.databasePath}`,
           iconPath: new vscode.ThemeIcon("search"),
           collapsibleState: vscode.TreeItemCollapsibleState.Expanded
+        };
+      case "cblitePath":
+        return {
+          id: `cblitePath:${element.databasePath}`,
+          label: "Choose compatible cblite download",
+          description: "Avoid upgrade",
+          iconPath: new vscode.ThemeIcon("tools"),
+          command: {
+            title: "Choose Compatible CBLite Download",
+            command: "cblite.setDatabaseCblitePath",
+            arguments: [element]
+          },
+          collapsibleState: vscode.TreeItemCollapsibleState.None
         };
       case "upgrade":
         return {
@@ -292,6 +329,7 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       case "searchResults":
       case "scope":
       case "upgrade":
+      case "cblitePath":
         return this.getDatabaseNode(element.databasePath);
       case "collection":
         return {
@@ -341,12 +379,23 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
 
   async upgradeDatabase(databasePath: string): Promise<void> {
     await this.cli.upgradeDatabase(databasePath);
-    this.collections.delete(databasePath);
-    for (const pageKey of this.documentPages.keys()) {
-      if (pageKey.startsWith(`${databasePath}:`)) {
-        this.documentPages.delete(pageKey);
-      }
-    }
+    this.clearDatabaseCaches(databasePath);
+    this.didChangeTreeData.fire();
+    this.didChangeActiveDatabase.fire(this.activeDatabase);
+  }
+
+  async setDatabaseCblitePath(databasePath: string, executablePath: string): Promise<void> {
+    this.cli.setDatabaseExecutablePath(databasePath, executablePath);
+    await this.persistDatabaseExecutables();
+    this.clearDatabaseCaches(databasePath);
+    this.didChangeTreeData.fire();
+    this.didChangeActiveDatabase.fire(this.activeDatabase);
+  }
+
+  async clearDatabaseCblitePath(databasePath: string): Promise<void> {
+    this.cli.clearDatabaseExecutablePath(databasePath);
+    await this.persistDatabaseExecutables();
+    this.clearDatabaseCaches(databasePath);
     this.didChangeTreeData.fire();
     this.didChangeActiveDatabase.fire(this.activeDatabase);
   }
@@ -465,7 +514,10 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       collections = await this.getCollections(database.databasePath);
     } catch (error) {
       if (isDatabaseUpgradeRequiredError(error)) {
-        return [{ type: "upgrade", databasePath: database.databasePath }];
+        return [
+          { type: "upgrade", databasePath: database.databasePath },
+          { type: "cblitePath", databasePath: database.databasePath }
+        ];
       }
 
       throw error;
@@ -548,6 +600,16 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     }
   }
 
+  private clearDatabaseCaches(databasePath: string): void {
+    this.collections.delete(databasePath);
+    this.searchResults = this.searchResults.filter((result) => result.databasePath !== databasePath);
+    for (const pageKey of this.documentPages.keys()) {
+      if (pageKey.startsWith(`${databasePath}:`)) {
+        this.documentPages.delete(pageKey);
+      }
+    }
+  }
+
   private getDatabaseNode(databasePath: string): DatabaseNode | undefined {
     const database = this.databases.find((item) => item.databasePath === databasePath);
     return database
@@ -589,10 +651,13 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
       if (isDatabaseUpgradeRequiredError(error)) {
         void vscode.window.showWarningMessage(
           "This database needs to be upgraded before documents can be loaded.",
-          "Upgrade Database"
+          "Upgrade Database",
+          "Choose CBLite Version"
         ).then((selection) => {
           if (selection === "Upgrade Database") {
             void vscode.commands.executeCommand("cblite.upgradeDatabase", { type: "upgrade", databasePath });
+          } else if (selection === "Choose CBLite Version") {
+            void vscode.commands.executeCommand("cblite.setDatabaseCblitePath", { type: "cblitePath", databasePath });
           }
         });
       }
@@ -615,6 +680,21 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
 
   private async persistActiveDatabase(): Promise<void> {
     await this.context.workspaceState.update(ACTIVE_DATABASE_STATE_KEY, this.activeDatabasePath);
+  }
+
+  private async persistDatabaseExecutables(): Promise<void> {
+    const overrides = this.databases
+      .map<DatabaseExecutableOverride | undefined>((database) => {
+        const executablePath = this.cli.getDatabaseExecutablePath(database.databasePath);
+        return executablePath
+          ? {
+              databasePath: database.databasePath,
+              executablePath
+            }
+          : undefined;
+      })
+      .filter((override): override is DatabaseExecutableOverride => Boolean(override));
+    await this.context.workspaceState.update(DATABASE_EXECUTABLES_STATE_KEY, overrides);
   }
 }
 

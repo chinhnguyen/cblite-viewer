@@ -192,6 +192,26 @@ Tradeoffs:
 
 - After reload, the extension may need to detect upgrade requirements again.
 
+## Support Per-Database CBLite Versions
+
+Decision:
+
+- Allow users to pin a specific downloaded `cblite` release to an opened database.
+
+Rationale:
+
+- Some older databases should remain in their current format instead of being upgraded.
+- A matching older `cblite` can open those databases without making them unreadable by older LiteCore versions.
+- Different opened databases may require different CLI versions.
+- Listing release downloads is safer and easier than asking users to find local binaries manually.
+
+Tradeoffs:
+
+- The extension depends on the Couchbase Mobile Tools GitHub release metadata and asset naming.
+- Stored executable paths can become stale if binaries are moved.
+- Cache invalidation is required when an override changes because collection and document behavior can differ by CLI version.
+- Exact `.cblite2` format mappings are not published in release metadata, so the UI uses LiteCore version as the compatibility signal.
+
 ## Show Recoverable Errors In The Tree
 
 Decision:

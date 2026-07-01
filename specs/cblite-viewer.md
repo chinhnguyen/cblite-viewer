@@ -16,7 +16,7 @@ Provide a Cursor/VS Code extension for opening, browsing, searching, editing, de
 - Users can open a document as JSON, edit it, and save it back to the source database.
 - Users can delete documents from either the tree or an open document editor.
 - Users can inspect database metadata in a dedicated view.
-- Users can upgrade an older database when the installed `cblite`/LiteCore version requires it.
+- Users can either upgrade an older database or select a matching downloaded `cblite` version when the installed `cblite`/LiteCore version cannot open it.
 
 ## Functional Requirements
 
@@ -83,11 +83,18 @@ Provide a Cursor/VS Code extension for opening, browsing, searching, editing, de
 - The extension must use `cbliteViewer.cblitePath` when configured and executable.
 - If the configured path cannot run, the extension must automatically download a compatible `cblite` binary.
 - Downloaded binaries must be extracted into extension-managed storage and reused.
+- Users must be able to set a database-specific `cblite` executable for opened databases by choosing from Couchbase Mobile Tools release downloads.
+- The release picker must show the release name, asset name, release date, and LiteCore version when release metadata declares it.
+- If exact `.cblite2` database format compatibility is not declared by upstream release metadata, the UI must avoid guessing and use the release's LiteCore version as the compatibility signal.
+- Database-specific executables must be persisted in workspace state.
+- Database-specific executables must override the global configured or auto-downloaded executable for that database only.
+- Users must be able to clear a database-specific executable and return to the default executable.
 - CLI calls must surface human-readable errors.
 
 ### Database Upgrade
 
 - When `cblite` reports that a database needs to be upgraded, the tree must expose an upgrade action.
+- When `cblite` reports that a database needs to be upgraded, the tree must also expose an option to select a compatible downloaded `cblite` version.
 - Upgrade must require explicit modal confirmation because it may make the database unreadable by older versions.
 - Upgrade must run with `--upgrade`.
 - After a successful upgrade, subsequent operations for that database must include `--upgrade` as needed.
@@ -116,6 +123,8 @@ The Databases view is registered with `vscode.window.createTreeView` because sea
 - `listDocuments` and `searchDocuments` share the same parser.
 - `searchDocuments` normalizes plain text into prefix patterns before invoking `ls`.
 - `withUpgrade` injects `--upgrade` only for databases that have been explicitly upgraded in this session.
+- Per-database executable overrides are resolved before falling back to `CBLiteDownloader`.
+- `CBLiteDownloader` lists release downloads from the Couchbase Mobile Tools GitHub releases API and installs the selected platform-compatible asset into extension storage.
 
 ### Database Tree Provider
 
@@ -123,6 +132,7 @@ The Databases view is registered with `vscode.window.createTreeView` because sea
 
 - Open database persistence.
 - Active database state.
+- Database-specific executable persistence.
 - Collection cache per database.
 - Document page cache per database and collection.
 - Search result state per database.
@@ -153,6 +163,7 @@ The editor must not infer document identity from filenames alone. It must use th
 - Deleting a document removes it from both its collection page and visible search results.
 - Saving a document that includes `_id` or `_rev` does not send those keys to `cblite put`.
 - An older database that requires upgrade shows an upgrade affordance and only upgrades after confirmation.
+- An older database that requires a compatible CLI version can be pinned to a downloaded `cblite` release without upgrading.
 - `npm run compile` succeeds.
 - `npm run package` succeeds.
 
@@ -161,4 +172,5 @@ The editor must not infer document identity from filenames alone. It must use th
 - Search is limited to the first 50 matches per collection for a given pattern.
 - Search currently uses document ID pattern matching provided by `cblite ls`.
 - Upgrade state is tracked in memory for the current extension session.
+- Database-specific executable paths are workspace state and may need to be reselected if moved on disk.
 - The VSIX package currently warns when `repository` is missing from `package.json`.

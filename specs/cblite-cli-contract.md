@@ -9,6 +9,12 @@ Document the expected `cblite` command behavior used by the extension. This is t
 - Prefer `cbliteViewer.cblitePath` when it points to a runnable executable.
 - If the configured executable cannot run, download a compatible binary through `CBLiteDownloader`.
 - Downloaded binaries are stored in extension-managed global storage.
+- A database-specific executable path may override the global/default executable for one opened database.
+- Database-specific executables are chosen from Couchbase Mobile Tools release downloads.
+- Downloaded database-specific executable paths are validated with `--version` before being persisted.
+- Clearing a database-specific executable returns that database to the global/default resolution path.
+- The release picker shows the release's LiteCore version when the release notes include it.
+- Exact `.cblite2` format compatibility is not declared by the release API, so the LiteCore version is shown as the best compatibility signal.
 
 ## Standard Commands
 
@@ -131,6 +137,12 @@ cblite --upgrade info <databasePath>
 
 After an explicit upgrade succeeds, subsequent operations for that database may prepend `--upgrade`.
 
+Alternative to upgrade:
+
+- Users may select and download a different `cblite` release that can open the database without upgrading it.
+- This is intended for older databases that should remain readable by older LiteCore versions.
+- Selecting a database-specific executable clears any in-memory upgraded state for that database.
+
 Upgrade-required errors are detected by matching messages that mention:
 
 - `needs to be upgraded`
@@ -158,4 +170,5 @@ Collection parsing:
 - `lscoll` may be missing in older versions.
 - `info --verbose` may fail on some databases or CLI builds.
 - Older databases may require `--upgrade`.
+- Older databases may require a matching older `cblite` executable instead of upgrade when the user wants to preserve format compatibility.
 - Document listing output is text-based and can regress if the CLI changes headers or column order.

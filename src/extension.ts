@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { CBLiteCli } from "./cbliteCli";
-import { CBLiteDownloader } from "./cbliteDownloader";
-import { DatabaseNode, DatabaseTreeProvider, DocumentNode, OpenedDatabase, UpgradeNode } from "./databaseTree";
+import { CBLiteDownloader, CBLiteDownloadOption } from "./cbliteDownloader";
+import { CBLitePathNode, DatabaseNode, DatabaseTreeProvider, DocumentNode, OpenedDatabase, UpgradeNode } from "./databaseTree";
 import { DocumentEditor } from "./documentEditor";
 import { MetadataTreeProvider } from "./metadataTree";
 
@@ -73,6 +73,36 @@ export function activate(context: vscode.ExtensionContext): void {
       } catch (error) {
         void vscode.window.showErrorMessage(formatError(error));
       }
+    }),
+    vscode.commands.registerCommand("cblite.setDatabaseCblitePath", async (node?: OpenedDatabase | CBLitePathNode) => {
+      const databasePath = node?.databasePath ?? databaseProvider.activeDatabase?.databasePath;
+      if (!databasePath) {
+        void vscode.window.showInformationMessage("Open or select a Couchbase Lite database first.");
+        return;
+      }
+
+      const option = await pickCbliteDownloadOption(downloader);
+      if (!option) {
+        return;
+      }
+
+      try {
+        const executablePath = await downloader.installDownloadOption(option);
+        await databaseProvider.setDatabaseCblitePath(databasePath, executablePath);
+        void vscode.window.showInformationMessage(`Using ${option.releaseName} for ${getDatabaseLabel(databasePath)}.`);
+      } catch (error) {
+        void vscode.window.showErrorMessage(formatError(error));
+      }
+    }),
+    vscode.commands.registerCommand("cblite.clearDatabaseCblitePath", async (node?: OpenedDatabase) => {
+      const databasePath = node?.databasePath ?? databaseProvider.activeDatabase?.databasePath;
+      if (!databasePath) {
+        void vscode.window.showInformationMessage("Open or select a Couchbase Lite database first.");
+        return;
+      }
+
+      await databaseProvider.clearDatabaseCblitePath(databasePath);
+      void vscode.window.showInformationMessage(`Using default cblite for ${getDatabaseLabel(databasePath)}.`);
     }),
     vscode.commands.registerCommand("cblite.refreshMetadata", async () => {
       await metadataProvider.refresh();
@@ -170,6 +200,42 @@ async function pickDatabasePath(): Promise<string | undefined> {
   });
 
   return result?.[0]?.fsPath;
+}
+
+async function pickCbliteDownloadOption(downloader: CBLiteDownloader): Promise<CBLiteDownloadOption | undefined> {
+  const options = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Loading cblite versions",
+      cancellable: false
+    },
+    () => downloader.listDownloadOptions()
+  );
+
+  if (options.length === 0) {
+    void vscode.window.showWarningMessage("No cblite downloads are available for this platform.");
+    return undefined;
+  }
+
+  const items = options.map((option) => ({
+    label: option.releaseName,
+    description: `${option.assetName}${option.prerelease ? " • prerelease" : ""}`,
+    detail: `${option.compatibility}${option.publishedAt ? `\nPublished ${new Date(option.publishedAt).toLocaleDateString()}` : ""}`,
+    option
+  }));
+
+  const selected = await vscode.window.showQuickPick(items, {
+    title: "Choose cblite Version",
+    placeHolder: "Select a Couchbase Mobile Tools release for this database",
+    matchOnDescription: true,
+    matchOnDetail: true
+  });
+
+  return selected?.option;
+}
+
+function getDatabaseLabel(databasePath: string): string {
+  return databasePath.split(/[\\/]/).filter(Boolean).pop() ?? databasePath;
 }
 
 async function pickDocumentId(databasePath: string | undefined): Promise<DocumentNode | undefined> {

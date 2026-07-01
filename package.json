@@ -45,6 +45,16 @@
         "icon": "$(warning)"
       },
       {
+        "command": "cblite.setDatabaseCblitePath",
+        "title": "CBLite: Choose CBLite Download Version",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "cblite.clearDatabaseCblitePath",
+        "title": "CBLite: Use Default CBLite",
+        "icon": "$(discard)"
+      },
+      {
         "command": "cblite.refreshMetadata",
         "title": "CBLite: Refresh Metadata",
         "icon": "$(refresh)"
@@ -106,12 +116,22 @@
       "view/item/context": [
         {
           "command": "cblite.closeDatabase",
-          "when": "view == cbliteDatabases && viewItem == cbliteDatabase",
+          "when": "view == cbliteDatabases && viewItem =~ /cbliteDatabase/",
           "group": "database_management"
         },
         {
           "command": "cblite.upgradeDatabase",
-          "when": "view == cbliteDatabases && viewItem == cbliteDatabase",
+          "when": "view == cbliteDatabases && viewItem =~ /cbliteDatabase/",
+          "group": "database_management"
+        },
+        {
+          "command": "cblite.setDatabaseCblitePath",
+          "when": "view == cbliteDatabases && viewItem =~ /cbliteDatabase/",
+          "group": "database_management"
+        },
+        {
+          "command": "cblite.clearDatabaseCblitePath",
+          "when": "view == cbliteDatabases && viewItem == cbliteDatabaseWithExecutable",
           "group": "database_management"
         },
         {
@@ -159,6 +179,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "adm-zip": "^0.5.17"
+    "adm-zip": "^0.5.17",
+    "tar": "^7.5.19"
   }
 }

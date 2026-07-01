@@ -8,7 +8,7 @@ The extension uses the Couchbase Mobile Tools `cblite` CLI. If `cblite` is avail
 
 https://github.com/couchbaselabs/couchbase-mobile-tools/releases
 
-To force a specific binary, set `cbliteViewer.cblitePath` to the executable path in VS Code settings.
+To force a default binary, set `cbliteViewer.cblitePath` to the executable path in VS Code settings. If one database needs an older or newer CLI version, use `CBLite: Choose CBLite Download Version` on that database to pick from Couchbase Mobile Tools releases.
 
 ## Features
 
@@ -19,6 +19,7 @@ To force a specific binary, set `cbliteViewer.cblitePath` to the executable path
 - Search document IDs across all opened databases with exact IDs or wildcard patterns.
 - Load documents in batches of 50 with a `Load more` row.
 - Upgrade older databases after confirmation when the current `cblite` version requires it.
+- Use a database-specific downloaded `cblite` version instead of upgrading when you need to keep an older database format.
 - Inspect useful database metadata like size, document counts, collections, sequences, UUIDs, and versioning.
 - Open a document as editable JSON.
 - Save JSON changes back to the database with `cblite --writeable put`.
@@ -29,6 +30,8 @@ To force a specific binary, set `cbliteViewer.cblitePath` to the executable path
 - `CBLite: Open Database`
 - `CBLite: Remove Database From Open List`
 - `CBLite: Upgrade Database`
+- `CBLite: Choose CBLite Download Version`
+- `CBLite: Use Default CBLite`
 - `CBLite: Refresh Metadata`
 - `CBLite: Search Documents by ID`
 - `CBLite: View/Edit Document`
