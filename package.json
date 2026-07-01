@@ -2,11 +2,16 @@
   "name": "cblite-vscode",
   "displayName": "CBLite Viewer",
   "description": "View and edit Couchbase Lite databases through the cblite CLI.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "willbe",
   "engines": {
     "vscode": "^1.105.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chinhnguyen/cblite-vscode"
+  },
+  "icon": "resources/cblite-viewer-logo.png",
   "categories": [
     "Other"
   ],
