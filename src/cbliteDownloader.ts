@@ -237,6 +237,12 @@ function getAssetArchCandidates(): string[] {
     return ["arm64", "aarch64", "x86_64"];
   }
 
+  // Windows on ARM can run x64 apps through emulation, and Couchbase currently
+  // publishes Windows x86_64 cblite builds.
+  if (process.platform === "win32" && process.arch === "arm64") {
+    return ["arm64", "aarch64", "x86_64"];
+  }
+
   if (process.arch === "arm64") {
     return ["arm64", "aarch64"];
   }

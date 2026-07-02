@@ -15,6 +15,7 @@ Document the expected `cblite` command behavior used by the extension. This is t
 - Clearing a database-specific executable returns that database to the global/default resolution path.
 - The release picker shows the release's LiteCore version when the release notes include it.
 - Exact `.cblite2` format compatibility is not declared by the release API, so the LiteCore version is shown as the best compatibility signal.
+- On Windows ARM64, the downloader may fall back to Windows x86_64 assets because Windows can run x64 applications through emulation and Couchbase may not publish ARM64 builds.
 
 ## Standard Commands
 
