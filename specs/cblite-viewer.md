@@ -57,6 +57,7 @@ Provide a Cursor/VS Code extension for opening, browsing, searching, editing, de
 ### Document Editing
 
 - Opening a document must fetch raw JSON with `cblite cat --raw`.
+- Opened editor JSON must omit Couchbase Lite metadata fields such as `_id` and `_rev`.
 - Non-default collections must use interactive `cblite` mode and `cd <collection>` before document operations.
 - Opened document files must be stored in extension storage using a database and collection hash.
 - Editor filenames should display only the document ID where possible.

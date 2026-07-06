@@ -94,7 +94,7 @@ export class CBLiteCli {
       ? await this.runInteractive(databasePath, [`cd ${collectionName}`, `cat --raw ${quoteInteractiveArg(documentId)}`])
       : await this.run(databasePath, this.withUpgrade(databasePath, ["cat", "--raw", databasePath, documentId]));
     try {
-      return JSON.parse(extractJsonObject(output));
+      return stripCbliteMetadata(JSON.parse(extractJsonObject(output)));
     } catch (error) {
       throw new Error(`cblite returned invalid JSON for "${documentId}": ${formatError(error)}`);
     }
