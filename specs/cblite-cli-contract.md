@@ -65,6 +65,14 @@ Delete is only called after user confirmation.
 
 ### Database Info
 
+Validation:
+
+```shell
+cblite info <databasePath>
+```
+
+Selected folders must pass validation before being added to the open database list. Upgrade-required errors are treated as valid database signals and handled by upgrade/version-selection recovery UI.
+
 Preferred:
 
 ```shell

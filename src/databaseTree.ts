@@ -377,6 +377,23 @@ export class DatabaseTreeProvider implements vscode.TreeDataProvider<DatabaseTre
     await this.loadDocuments(node.databasePath, node.collectionName, true);
   }
 
+  reloadDatabase(databasePath: string): void {
+    this.clearDatabaseCaches(databasePath);
+    this.didChangeTreeData.fire();
+  }
+
+  async getDefaultCollectionNode(databasePath: string): Promise<DatabaseTreeNode | undefined> {
+    const collection = (await this.getCollections(databasePath)).find((item) => item.name === "_default._default");
+    return collection
+      ? {
+          type: "collection",
+          databasePath,
+          scopeName: "_default",
+          collection
+        }
+      : undefined;
+  }
+
   async upgradeDatabase(databasePath: string): Promise<void> {
     await this.cli.upgradeDatabase(databasePath);
     this.clearDatabaseCaches(databasePath);

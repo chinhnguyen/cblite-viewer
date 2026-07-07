@@ -205,6 +205,13 @@ When a database is upgraded:
 - Clear its document page cache entries.
 - Refresh the tree and metadata view.
 
+When a database is reloaded:
+
+- Clear its collection cache.
+- Clear its document page cache entries.
+- Clear any active search result node for that database.
+- Re-render the tree so expanding the database loads fresh scopes, collections, and documents.
+
 When a document is deleted:
 
 - Remove it from any loaded page for its collection.

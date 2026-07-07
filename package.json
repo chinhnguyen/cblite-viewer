@@ -2,7 +2,7 @@
   "name": "cblite-vscode",
   "displayName": "CBLite Viewer",
   "description": "View and edit Couchbase Lite databases through the cblite CLI.",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "willbe",
   "engines": {
     "vscode": "^1.105.0"
@@ -42,7 +42,13 @@
       },
       {
         "command": "cblite.closeDatabase",
-        "title": "CBLite: Remove Database From Open List"
+        "title": "CBLite: Remove Database From Open List",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "cblite.reloadDatabase",
+        "title": "CBLite: Reload Database",
+        "icon": "$(refresh)"
       },
       {
         "command": "cblite.upgradeDatabase",
@@ -72,6 +78,11 @@
       {
         "command": "cblite.openDocument",
         "title": "CBLite: View/Edit Document"
+      },
+      {
+        "command": "cblite.copyDocumentId",
+        "title": "CBLite: Copy Document ID",
+        "icon": "$(copy)"
       },
       {
         "command": "cblite.deleteDocument",
@@ -120,9 +131,14 @@
       ],
       "view/item/context": [
         {
+          "command": "cblite.reloadDatabase",
+          "when": "view == cbliteDatabases && viewItem =~ /cbliteDatabase/",
+          "group": "inline@1"
+        },
+        {
           "command": "cblite.closeDatabase",
           "when": "view == cbliteDatabases && viewItem =~ /cbliteDatabase/",
-          "group": "database_management"
+          "group": "inline@2"
         },
         {
           "command": "cblite.upgradeDatabase",
@@ -138,6 +154,11 @@
           "command": "cblite.clearDatabaseCblitePath",
           "when": "view == cbliteDatabases && viewItem == cbliteDatabaseWithExecutable",
           "group": "database_management"
+        },
+        {
+          "command": "cblite.copyDocumentId",
+          "when": "view == cbliteDatabases && viewItem == cbliteDocument",
+          "group": "document_management"
         },
         {
           "command": "cblite.deleteDocument",

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { CBLiteCli } from "./cbliteCli";
+import { CBLiteCli, isDatabaseUpgradeRequiredError } from "./cbliteCli";
 import { CBLiteDownloader, CBLiteDownloadOption } from "./cbliteDownloader";
 import { CBLitePathNode, DatabaseNode, DatabaseTreeProvider, DocumentNode, OpenedDatabase, UpgradeNode } from "./databaseTree";
 import { DocumentEditor } from "./documentEditor";
@@ -28,7 +28,36 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      databaseProvider.openDatabase(databasePath);
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Validating Couchbase Lite database",
+            cancellable: false
+          },
+          () => cli.validateDatabasePath(databasePath)
+        );
+        databaseProvider.openDatabase(databasePath);
+        await revealDefaultCollection(databasePath);
+      } catch (error) {
+        if (isDatabaseUpgradeRequiredError(error)) {
+          databaseProvider.openDatabase(databasePath);
+          void vscode.window.showWarningMessage(
+            "This looks like a Couchbase Lite database, but it needs upgrade or a compatible cblite version before it can be opened.",
+            "Upgrade Database",
+            "Choose CBLite Version"
+          ).then((selection) => {
+            if (selection === "Upgrade Database") {
+              void vscode.commands.executeCommand("cblite.upgradeDatabase", { databasePath });
+            } else if (selection === "Choose CBLite Version") {
+              void vscode.commands.executeCommand("cblite.setDatabaseCblitePath", { databasePath });
+            }
+          });
+          return;
+        }
+
+        void vscode.window.showErrorMessage(`Selected folder is not a Couchbase Lite database: ${formatError(error)}`);
+      }
     }),
     vscode.commands.registerCommand("cblite.selectDatabase", (node?: DatabaseNode) => {
       if (!node) {
@@ -43,6 +72,16 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       databaseProvider.closeDatabase(node);
+    }),
+    vscode.commands.registerCommand("cblite.reloadDatabase", async (node?: OpenedDatabase) => {
+      const databasePath = node?.databasePath ?? databaseProvider.activeDatabase?.databasePath;
+      if (!databasePath) {
+        void vscode.window.showInformationMessage("Open or select a Couchbase Lite database first.");
+        return;
+      }
+
+      databaseProvider.reloadDatabase(databasePath);
+      await revealDefaultCollection(databasePath);
     }),
     vscode.commands.registerCommand("cblite.upgradeDatabase", async (node?: OpenedDatabase | UpgradeNode) => {
       const databasePath = node?.databasePath ?? databaseProvider.activeDatabase?.databasePath;
@@ -137,6 +176,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("cblite.loadMoreDocuments", async (node) => {
       await databaseProvider.loadMoreDocuments(node);
     }),
+    vscode.commands.registerCommand("cblite.copyDocumentId", async (node?: DocumentNode) => {
+      if (!node?.documentId) {
+        void vscode.window.showInformationMessage("Select a Couchbase Lite document first.");
+        return;
+      }
+
+      await vscode.env.clipboard.writeText(node.documentId);
+      void vscode.window.showInformationMessage(`Copied document ID: ${node.documentId}`);
+    }),
     vscode.commands.registerCommand("cblite.deleteDocument", async (node?: DocumentNode) => {
       const target = node ?? editor.getActiveDocument();
       if (!target) {
@@ -180,6 +228,17 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   databaseProvider.emitActiveDatabase();
+
+  async function revealDefaultCollection(databasePath: string): Promise<void> {
+    try {
+      const defaultCollection = await databaseProvider.getDefaultCollectionNode(databasePath);
+      if (defaultCollection) {
+        await databaseTreeView.reveal(defaultCollection, { expand: true, focus: false, select: false });
+      }
+    } catch {
+      // Opening should not fail just because the default collection is absent.
+    }
+  }
 }
 
 function formatError(error: unknown): string {

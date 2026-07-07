@@ -24,9 +24,13 @@ Provide a Cursor/VS Code extension for opening, browsing, searching, editing, de
 
 - The extension must expose a `CBLite` activity bar container.
 - The `Databases` view must allow users to open multiple `.cblite2` directories.
+- Selected folders must be validated with `cblite info` before they are added to the open database list.
+- Invalid folders must not be added and must show a clear error message.
+- Databases that fail validation only because they require upgrade or a compatible `cblite` version must still be accepted and must show recovery actions.
 - Opened databases must persist in workspace state and survive view switches or reloads.
 - Selecting a database must update the active database used by metadata and fallback document commands.
 - Removing a database must remove it from the persisted open list without deleting files from disk.
+- Each database row must expose a reload action that clears cached scopes, collections, documents, and search results for that database.
 
 ### Tree Navigation
 
@@ -34,6 +38,8 @@ Provide a Cursor/VS Code extension for opening, browsing, searching, editing, de
 - Expanding a database must load collections through `cblite lscoll`.
 - If `lscoll` is unavailable, the implementation must fall back to parsing `cblite info`.
 - If no collection details can be found, the implementation must fall back to `_default._default`.
+- The `_default._default` fallback must only be used after successful database info reads; failed database reads must not be treated as an empty default collection.
+- Opening or reloading a database must reveal and expand the `_default._default` collection when it exists.
 - Collections must be grouped by scope.
 - Documents must load lazily per collection.
 - Initial document loading must use a page size of 50.
@@ -61,6 +67,7 @@ Provide a Cursor/VS Code extension for opening, browsing, searching, editing, de
 - Non-default collections must use interactive `cblite` mode and `cd <collection>` before document operations.
 - Opened document files must be stored in extension storage using a database and collection hash.
 - Editor filenames should display only the document ID where possible.
+- Users must be able to copy a document ID from a document row.
 - If the active clean document tab belongs to this extension, opening another document may reuse that tab.
 - Saving a document must write back through `cblite --writeable put`.
 - `_id` and `_rev` metadata must be stripped before writing to avoid illegal top-level key errors.

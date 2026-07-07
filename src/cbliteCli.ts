@@ -124,6 +124,10 @@ export class CBLiteCli {
     this.upgradedDatabases.add(databasePath);
   }
 
+  async validateDatabasePath(databasePath: string): Promise<void> {
+    await this.run(databasePath, ["info", databasePath]);
+  }
+
   async getDatabaseMetadata(databasePath: string): Promise<DatabaseMetadata> {
     const output = await this.getDatabaseInfoOutput(databasePath);
     return {
@@ -155,7 +159,7 @@ export class CBLiteCli {
       if (isDatabaseUpgradeRequiredError(error)) {
         throw error;
       }
-      return [{ name: "_default._default" }];
+      throw error;
     }
   }
 
